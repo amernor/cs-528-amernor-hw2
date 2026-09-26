@@ -126,14 +126,31 @@ def read_from_dir(directory):
     return page_links
 
 
+WIDTH = 60
+
+
+def section(title):
+    """Print a major section banner framed by '=' lines."""
+    print("\n" + "=" * WIDTH)
+    print(f" {title}")
+    print("=" * WIDTH)
+
+
+def subsection(title):
+    """Print a minor section banner framed by '-' lines."""
+    print("\n" + "-" * WIDTH)
+    print(f" {title}")
+    print("-" * WIDTH)
+
+
 def print_stats(title, stats):
-    quintiles = ", ".join(f"{x:.2f}" for x in stats["quintiles"])
-    print(f"{title}:")
-    print(f"  Average:   {stats['average']:.4f}")
-    print(f"  Median:    {stats['median']:.2f}")
-    print(f"  Max:       {stats['max']:.0f}")
-    print(f"  Min:       {stats['min']:.0f}")
-    print(f"  Quintiles (20th/40th/60th/80th pct): {quintiles}")
+    quintiles = " | ".join(f"{x:.2f}" for x in stats["quintiles"])
+    subsection(title.upper())
+    print(f"  average    {stats['average']:.4f}")
+    print(f"  median     {stats['median']:.2f}")
+    print(f"  max        {stats['max']:.0f}")
+    print(f"  min        {stats['min']:.0f}")
+    print(f"  quintiles  {quintiles}")
 
 
 def main():
@@ -177,8 +194,9 @@ def main():
     t = time.perf_counter()
     graph = build_graph(page_links)
     timings["Build graph"] = time.perf_counter() - t
-    print(f"\nSource: {source}")
-    print(f"Pages: {graph.n}   Links: {graph.num_edges}\n")
+    section("GRAPH SUMMARY")
+    print(f" Source : {source}")
+    print(f" Pages  : {graph.n:,}      Links : {graph.num_edges:,}")
 
     t = time.perf_counter()
     in_stats = degree_stats(graph.in_degree)
@@ -194,26 +212,28 @@ def main():
     change = abs(sums[-1] - sums[-2]) / sums[-2]
     stop = ("fixed iteration count" if args.pr_iterations
             else f"threshold {args.tol * 100:g}%")
-    print(f"\nPageRank: stopped after {iterations} iteration(s) ({stop}); "
-          f"sum of PR {sums[-2]:.6f} -> {sums[-1]:.6f} "
+    section("PAGERANK")
+    print(f" Stopped after {iterations} iteration(s) ({stop})")
+    print(f" Sum of PR {sums[-2]:.6f} -> {sums[-1]:.6f} "
           f"({change * 100:.4f}% change)")
-    print(f"Top {args.top} pages by PageRank:")
+    print(f"\n>>> TOP {args.top} PAGES BY PAGERANK")
     for rank, i in enumerate(top_k(pr, args.top), start=1):
-        print(f"  {rank}. {graph.names[i]:<15} {pr[i]:.8f}")
+        print(f"    #{rank}  {graph.names[i]:<12} {pr[i]:.8f}")
 
+    section("CLOSENESS CENTRALITY")
+    print(" Running one BFS per page ...", flush=True)
     t = time.perf_counter()
-    print("\nCloseness centrality (one BFS per page):", flush=True)
     closeness = closeness_centrality(graph, progress=1000)
     timings["Closeness centrality"] = time.perf_counter() - t
     best = top_k(closeness, 1)[0]
-    print(f"\nBest closeness centrality: "
-          f"{graph.names[best]} (score {closeness[best]:.6f})")
-    print("Next 4 by closeness:")
-    for rank, i in enumerate(top_k(closeness, 5)[1:], start=2):
-        print(f"  {rank}. {graph.names[i]:<15} {closeness[i]:.6f}")
+    print(f"\n Best closeness : {graph.names[best]} "
+          f"(score {closeness[best]:.6f})")
+    print(f"\n>>> TOP 5 PAGES BY CLOSENESS")
+    for rank, i in enumerate(top_k(closeness, 5), start=1):
+        print(f"    #{rank}  {graph.names[i]:<12} {closeness[i]:.6f}")
 
     timings["TOTAL"] = time.perf_counter() - t_start
-    print("\nTiming (seconds):")
+    section("TIMING (seconds)")
     for name, secs in timings.items():
         print(f"  {name:<22} {secs:10.2f}")
 
