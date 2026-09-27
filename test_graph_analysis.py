@@ -20,9 +20,6 @@ from graph_analysis import (
     top_k,
 )
 
-
-# ---------------------------------------------------------------- parsing
-
 def test_parse_links():
     html = '<a HREF="12.html">x</a><p><a href="dir/7.html">y</a><a href="12.html">z</a>'
     assert parse_links(html) == ["12.html", "7.html", "12.html"]
@@ -82,7 +79,7 @@ def test_degree_stats_of_a_graph():
 # --------------------------------------------------------------- PageRank
 
 def naive_pagerank(n, edges, damping=0.85, tol=0.005, max_iter=1000):
-    """Direct transcription of the assignment's formula, organised the other
+    """Direct transcription of the formula, organised the other
     way round from the real code: it loops over each page A and looks up the
     pages T that point at it."""
     out_deg = [0] * n
@@ -111,9 +108,7 @@ def test_pagerank_cycle_is_uniform():
 def test_pagerank_hand_computed():
     # A=0 -> B, C ; B=1 -> C ; C=2 -> A.  No dangling pages, so the total PR
     # stays 1.0 and the 0.5% sum rule stops after one iteration:
-    #   PR(A) = 0.05 + 0.85 * (1/3)             = 0.333333
-    #   PR(B) = 0.05 + 0.85 * (1/3)/2           = 0.191667
-    #   PR(C) = 0.05 + 0.85 * ((1/3)/2 + 1/3)   = 0.475000
+    
     graph = Graph.from_edges(3, [(0, 1), (0, 2), (1, 2), (2, 0)])
     pr, iterations, _ = pagerank(graph)
     assert iterations == 1
@@ -171,7 +166,6 @@ def test_pagerank_counts_duplicate_links_in_the_out_degree():
     assert pr[1] == pytest.approx(0.075 + 0.85 * pr[0])
 
 
-# -------------------------------------------------------------- closeness
 
 def undirected(n, pairs):
     return Graph.from_edges(n, [e for a, b in pairs for e in ((a, b), (b, a))])
@@ -268,8 +262,6 @@ def test_closeness_matches_naive_reference_on_random_graphs(seed):
     graph = Graph.from_edges(n, edges)
     assert closeness_centrality(graph) == pytest.approx(naive_closeness(n, edges))
 
-
-# -------------------------------------------------------------------- misc
 
 def test_top_k_orders_and_breaks_ties_by_node_id():
     assert top_k([0.1, 0.5, 0.5, 0.2], 3) == [1, 2, 3]

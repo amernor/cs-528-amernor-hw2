@@ -1,17 +1,8 @@
-"""Graph construction and analysis, written from scratch in plain Python.
 
-No graph library is used (no networkx / igraph / graph-tool / ...), and no
-numeric library either: the graph is a list of adjacency lists and every
-algorithm below is an ordinary loop over those lists.
-
-    graph.out_links[i]  ->  list of node ids that page i links to
-"""
 import re
 from collections import deque
 
-# Matches href="target", HREF='target' or href=target (case-insensitive).
 LINK_RE = re.compile(r"""href\s*=\s*["']?([^"'\s>]+)""", re.IGNORECASE)
-
 
 def parse_links(html):
     """Return the list of link targets in an HTML page, as file basenames.
@@ -75,8 +66,6 @@ def build_graph(page_links):
     return Graph(names, out_links)
 
 
-# ---------------------------------------------------------------- statistics
-
 def _percentile(ordered, p):
     """p-th percentile of an already sorted list, by linear interpolation.
 
@@ -111,21 +100,12 @@ def degree_stats(values):
     }
 
 
-# ------------------------------------------------------------------ PageRank
 
 def pagerank(graph, damping=0.85, tol=0.005, max_iter=1000, fixed_iterations=None):
     """Iterative PageRank:  PR(A) = (1-d)/n + d * sum(PR(T)/C(T)) over T -> A.
 
     Starts from PR = 1/n and stops when the sum of all PageRanks changes by no
-    more than `tol` (0.5% by default) relative to the previous iteration, which
-    is the rule the assignment specifies.
-
-    Pages with no out-links pass nothing on, so the total PageRank shrinks from
-    one iteration to the next; that shrinkage is what the stopping rule sees.
-    Note that the rule watches the total only: on a graph where every page has
-    at least one out-link the total stays exactly 1.0, the measured change is
-    zero, and the rule fires after a single iteration even though the
-    individual scores are still far from their fixed point.
+    more than `tol` (0.5% by default) relative to the previous iteration.
 
     Passing `fixed_iterations` runs exactly that many iterations and ignores
     the stopping rule; it is there to show how much the scores move afterwards.
@@ -161,15 +141,9 @@ def top_k(scores, k):
     return sorted(range(len(scores)), key=lambda i: (-scores[i], i))[:k]
 
 
-# ----------------------------------------------------------------- closeness
 
 def bfs_distances(graph, source):
-    """Hop distances from `source` following out-links; -1 means unreachable.
-
-    Standard breadth-first search with a FIFO queue: nodes come off the queue
-    in order of distance, so the first time a node is seen is along a shortest
-    path.
-    """
+    """Standard breadth-first search with a FIFO queue."""
     n = graph.n
     dist = [-1] * n
     dist[source] = 0
@@ -190,8 +164,7 @@ def bfs_distances(graph, source):
 def closeness_centrality(graph, progress=None):
     """Closeness centrality of every node, using distances along out-links.
 
-    Runs one BFS from every node.  Uses the Wasserman-Faust form, which copes
-    with nodes that cannot reach the whole graph:
+    Runs one BFS from every node. Wasserman-Faust form:
 
         C(u) = (r / total_dist) * (r / (n - 1))
 
