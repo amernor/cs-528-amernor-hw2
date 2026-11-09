@@ -1,7 +1,7 @@
 # HW7 — Apache Beam / Cloud Dataflow
 
 Builds on [HW2](../hw2/): an Apache Beam pipeline over the 12,000 HTML pages in
-`gs://cs-528-amernor/pages/` that finds
+`gs://cs528-amernor/pages/` that finds
 
 1. the top 5 files with the most **incoming** links,
 2. the top 5 files with the most **outgoing** links,
@@ -11,7 +11,7 @@ and runs both on the laptop (DirectRunner) and on Google Cloud Dataflow.
 
 - **Project:** `superb-heaven-507521-u2`
 - **Region:** `us-central1`
-- **Bucket:** `gs://cs-528-amernor/` (pages under `pages/`)
+- **Bucket:** `gs://cs528-amernor/` (pages under `pages/`)
 
 ---
 
@@ -30,7 +30,7 @@ and runs both on the laptop (DirectRunner) and on Google Cloud Dataflow.
 `beam_analysis.py` builds one Beam pipeline:
 
 ```
-MatchFiles(--input) -> ReadMatches -> (file name, html)          "pages"
+MatchFiles(--input) -> Reshuffle -> ReadMatches -> (file name, html)   "pages"
    |
    +-- parse_links -> (name, [targets])                           "links"
    |      +-- len(targets)                -> Top 5   = top outgoing
@@ -53,6 +53,11 @@ MatchFiles(--input) -> ReadMatches -> (file name, html)          "pages"
   with a `Counter` first, so it emits about 75 `(trigram, count)` pairs instead of
   about 12,000 single trigrams. That cuts the data shuffled from ~140 M elements to
   under 1 M, and the local runtime from ~250 s to ~85 s.
+- **Reading in parallel.** Without the `Reshuffle`, Beam fuses the file listing with
+  the reads. All 12,000 files are then downloaded one by one on a single thread, even
+  when Dataflow adds workers. The first Dataflow run did exactly this and took 41 min.
+  `Reshuffle` breaks the fusion and spreads the file list across workers and threads.
+  The same code then took 14.9 min.
 - **Ties** are broken the same way everywhere: higher count first, then file name in
   numeric order (`2.html` before `10.html`) or trigram in alphabetical order. The
   generated pages repeat the same Lorem-ipsum paragraph, so 71 trigrams tie for first.
@@ -111,8 +116,15 @@ gcloud projects add-iam-policy-binding superb-heaven-507521-u2 \
 Reading straight from the bucket:
 
 ```
-python beam_analysis.py --input 'gs://cs-528-amernor/pages/*' --output ./output
+python beam_analysis.py --input 'gs://cs528-amernor/pages/*' --output ./output \
+    --runner apache_beam.runners.portability.fn_api_runner.FnApiRunner \
+    --direct_num_workers 8 --direct_running_mode multi_threading
 ```
+
+This uses Beam's in-process Python runner with 8 threads. Since Beam 2.6x, the plain
+`DirectRunner` hands work to the Prism runner. On this laptop, Prism dropped its gRPC
+connection ("Stream removed (Socket closed)") a few minutes into reading from GCS, on
+every attempt. It works fine on local files.
 
 Or reading the HW2 pages already on disk (no network):
 
@@ -124,12 +136,12 @@ python beam_analysis.py --input '../hw2/data/*.html' --output ./output
 
 ```
 python beam_analysis.py \
-    --input 'gs://cs-528-amernor/pages/*' \
-    --output gs://cs-528-amernor/hw7/output \
+    --input 'gs://cs528-amernor/pages/*' \
+    --output gs://cs528-amernor/hw7/output \
     --runner DataflowRunner \
     --project superb-heaven-507521-u2 \
     --region us-central1 \
-    --temp_location gs://cs-528-amernor/hw7/tmp \
+    --temp_location gs://cs528-amernor/hw7/tmp \
     --job_name hw7-links-trigrams
 ```
 
@@ -141,7 +153,7 @@ Options:
 
 | Flag | Meaning | Default |
 |---|---|---|
-| `--input` | File pattern to read (local or `gs://`) | `gs://cs-528-amernor/pages/*` |
+| `--input` | File pattern to read (local or `gs://`) | `gs://cs528-amernor/pages/*` |
 | `--output` | Folder for the result files (local or `gs://`) | `./output` |
 | `--runner` | `DirectRunner` (laptop) or `DataflowRunner` | `DirectRunner` |
 | any other Beam flag | passed straight to Beam (`--max_num_workers`, `--machine_type`, …) | |
@@ -181,9 +193,31 @@ TOP 5 WORD TRIGRAMS
 
 | Where | Input | Wall-clock |
 |---|---|---|
-| Laptop, DirectRunner (Apple Silicon, Beam 2.77) | local `../hw2/data` | 85.7 s |
-| Laptop, DirectRunner | `gs://cs-528-amernor/pages/*` | _TBD_ |
-| Cloud Dataflow (`us-central1`) | `gs://cs-528-amernor/pages/*` | _TBD_ |
+All runs read the same 12,000 pages and printed identical results. Beam 2.77,
+Python 3.12, Apple Silicon laptop.
+
+| Where | Input | Wall-clock |
+|---|---|---|
+| Laptop, DirectRunner (Prism) | local disk `../hw2/data` | **83.6 s** |
+| Laptop, FnApiRunner, 8 threads | `gs://cs528-amernor/pages/*` | **555.0 s** (9.3 min) |
+| Cloud Dataflow, ≤ 4 × n1-standard-1, `us-central1` | `gs://cs528-amernor/pages/*` | **895.3 s** (14.9 min) |
+| Cloud Dataflow, first version without `Reshuffle` | `gs://cs528-amernor/pages/*` | 2,459 s (41.0 min) |
+
+Where the Dataflow time went (job `2026-11-08_19_52_00-2717440404910574617`):
+
+| Phase | Time |
+|---|---|
+| Launch + worker VM startup | ~3.0 min |
+| Read + process all files (1 worker, autoscaled to 4 after ~1 min) | ~10.7 min |
+| Final combines, write results, shut down workers | ~1.2 min |
+
+**Why Dataflow is slower here:** the data set is small, about 976 MB in 12,000 small
+files. Each file is a separate GCS request, so the run is dominated by per-file
+request overhead and by Dataflow's fixed costs (starting VMs, staging code,
+shutting down), not by computation. The laptop reading local disk avoids the network
+completely. Dataflow pays off when the input is far bigger than one machine can read
+in reasonable time: the work then spreads over many workers, while the fixed
+~4 minutes of overhead stays the same.
 
 ---
 

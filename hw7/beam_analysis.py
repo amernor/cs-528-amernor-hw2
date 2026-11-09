@@ -14,17 +14,17 @@ the same whichever runner did the work.
 
 Examples:
     # local laptop, reading from the bucket
-    python beam_analysis.py --input 'gs://cs-528-amernor/pages/*' \\
+    python beam_analysis.py --input 'gs://cs528-amernor/pages/*' \\
         --output ./output
 
     # local laptop, reading the HW2 pages from disk
     python beam_analysis.py --input '../hw2/data/*.html' --output ./output
 
     # Cloud Dataflow
-    python beam_analysis.py --input 'gs://cs-528-amernor/pages/*' \\
-        --output gs://cs-528-amernor/hw7/output \\
+    python beam_analysis.py --input 'gs://cs528-amernor/pages/*' \\
+        --output gs://cs528-amernor/hw7/output \\
         --runner DataflowRunner --project superb-heaven-507521-u2 \\
-        --region us-central1 --temp_location gs://cs-528-amernor/hw7/tmp
+        --region us-central1 --temp_location gs://cs528-amernor/hw7/tmp
 """
 import argparse
 import re
@@ -125,6 +125,10 @@ def build_pipeline(p, input_pattern, output_dir):
     pages = (
         p
         | "Match files" >> fileio.MatchFiles(input_pattern)
+        # Without this, Beam fuses the listing with the reads and all 12,000
+        # files are downloaded one by one on a single thread.  Reshuffling the
+        # file list spreads the reads across workers and threads.
+        | "Spread reads" >> beam.Reshuffle()
         | "Read files" >> fileio.ReadMatches()
         | "Name + text" >> beam.Map(
             lambda f: (basename(f.metadata.path), f.read_utf8()))
@@ -210,7 +214,7 @@ def print_results(output_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--input", default="gs://cs-528-amernor/pages/*",
+    parser.add_argument("--input", default="gs://cs528-amernor/pages/*",
                         help="file pattern to read (default: %(default)s)")
     parser.add_argument("--output", default="./output",
                         help="directory (local or gs://) for result files")
